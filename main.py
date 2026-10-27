@@ -1,111 +1,94 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
+import pandas as pd
+
+from data_loader import load_sales_data
+from data_cleaner import clean_sales_data
+from analyzer import (
+calculate_basic_stats,
+analyze_sales_by_category,
+analyze_top_products,
+analyze_monthly_trends,
+)
+from visualizer import create_visualizations
+from report_generator import generate_excel_report
 
 BASE_DIR = Path(file).resolve().parent
-DATA_FILE = BASE_DIR / "data" / "raw" / "sales_data.csv"
 OUTPUT_DIR = BASE_DIR / "data" / "processed"
-REPORT_DIR = BASE_DIR / "reports"
-
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 def main():
-print("=" * 45)
+print("=" * 50)
 print("       SALES DATA ANALYSIS DASHBOARD")
-print("=" * 45)
+print("=" * 50)
 
-# Load sales data
-df = pd.read_csv(DATA_FILE)
-df["order_date"] = pd.to_datetime(df["order_date"])
+# 1. Load sales data
+df = load_sales_data()
 
-# Clean data
-df = df.drop_duplicates()
-df = df.dropna(subset=["order_id", "total_amount"])
+if df is None or df.empty:
+    print("No sales data available. Please check the CSV file.")
+    return
 
-df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
-df["total_amount"] = pd.to_numeric(
-    df["total_amount"], errors="coerce"
-)
-df = df.dropna(subset=["quantity", "total_amount"])
+# 2. Clean data
+df = clean_sales_data(df)
 
-# Basic analysis
-total_sales = df["total_amount"].sum()
-average_order = df["total_amount"].mean()
-total_orders = len(df)
-total_customers = df["customer_id"].nunique()
+if df.empty:
+    print("No valid records remain after cleaning.")
+    return
 
-print(f"\nTotal Sales: Rs. {total_sales:,.2f}")
-print(f"Average Order Value: Rs. {average_order:,.2f}")
-print(f"Total Orders: {total_orders}")
-print(f"Unique Customers: {total_customers}")
+# 3. Save cleaned data
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Sales by category
-category_sales = df.groupby("category")["total_amount"].sum()
-category_sales = category_sales.sort_values(ascending=False)
+cleaned_file = OUTPUT_DIR / "cleaned_sales_data.csv"
+df.to_csv(cleaned_file, index=False)
 
-print("\nSales by Category:")
+print(f"\nCleaned data saved to: {cleaned_file}")
+
+# 4. Calculate statistics
+stats = calculate_basic_stats(df)
+
+print("\n--- BASIC SALES STATISTICS ---")
+
+for metric, value in stats.items():
+    print(f"{metric.replace('_', ' ').title()}: {value:,.2f}")
+
+# 5. Analyze category sales
+category_sales = analyze_sales_by_category(df)
+
+print("\n--- SALES BY CATEGORY ---")
 print(category_sales)
 
-# Monthly sales analysis
-df["month"] = df["order_date"].dt.to_period("M").astype(str)
-monthly_sales = df.groupby("month")["total_amount"].sum()
+# 6. Find top products
+top_products = analyze_top_products(df)
 
-print("\nMonthly Sales:")
+print("\n--- TOP SELLING PRODUCTS ---")
+print(top_products)
+
+# 7. Analyze monthly trends
+monthly_sales = analyze_monthly_trends(df)
+
+print("\n--- MONTHLY SALES TRENDS ---")
 print(monthly_sales)
 
-# Save cleaned data
-df.to_csv(OUTPUT_DIR / "cleaned_sales_data.csv", index=False)
+# 8. Create charts
+create_visualizations(
+    category_sales,
+    monthly_sales
+)
 
-# Save analysis report
-with pd.ExcelWriter(REPORT_DIR / "sales_report.xlsx") as writer:
-    pd.DataFrame({
-        "Metric": [
-            "Total Sales",
-            "Average Order Value",
-            "Total Orders",
-            "Unique Customers"
-        ],
-        "Value": [
-            total_sales,
-            average_order,
-            total_orders,
-            total_customers
-        ]
-    }).to_excel(writer, sheet_name="Summary", index=False)
+# 9. Generate Excel report
+report_path = generate_excel_report(
+    stats,
+    category_sales,
+    top_products,
+    monthly_sales
+)
 
-    category_sales.to_frame("Total Sales").to_excel(
-        writer, sheet_name="Category Analysis"
-    )
-
-    monthly_sales.to_frame("Total Sales").to_excel(
-        writer, sheet_name="Monthly Trends"
-    )
-
-# Create monthly sales chart
-monthly_sales.plot(kind="line", marker="o")
-plt.title("Monthly Sales Trend")
-plt.xlabel("Month")
-plt.ylabel("Sales (Rs.)")
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.savefig(REPORT_DIR / "monthly_sales.png")
-plt.close()
-
-# Create category sales chart
-category_sales.plot(kind="bar")
-plt.title("Sales by Category")
-plt.xlabel("Category")
-plt.ylabel("Sales (Rs.)")
-plt.xticks(rotation=30)
-plt.tight_layout()
-plt.savefig(REPORT_DIR / "category_sales.png")
-plt.close()
-
-print("\nFiles generated successfully!")
-print("Cleaned data: data/processed/cleaned_sales_data.csv")
-print("Excel report: reports/sales_report.xlsx")
-print("Charts: reports/monthly_sales.png and category_sales.png")
+print("\n" + "=" * 50)
+print("SALES ANALYSIS COMPLETED SUCCESSFULLY!")
+print("=" * 50)
+print(f"Cleaned CSV: {cleaned_file}")
+print(f"Excel Report: {report_path}")
+print("Charts: reports/category_sales.png")
+print("        reports/monthly_sales.png")
 
 if name == "main":
 main()
